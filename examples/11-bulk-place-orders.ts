@@ -16,6 +16,9 @@
  * 4. Complex Strategies: Enables sophisticated trading strategies by combining order
  *    cancellations and placements in a single operation
  *
+ * Important Note:
+ * - Unlike single order placement, bulk placed orders do NOT match with the AMM.
+ *
  * Use bulk operations when you need to:
  * - Cancel and replace multiple orders simultaneously
  * - Place multiple orders at different price levels

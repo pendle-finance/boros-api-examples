@@ -67,15 +67,17 @@ Conversion between rate and tick using SDK helpers:
 
 ## Examples Overview
 
-| #   | Script        | Requires Agent | Description                       |
-| --- | ------------- | -------------- | --------------------------------- |
-| 01  | agent         | No             | Approve agent wallet              |
-| 02  | assets        | No             | List available assets             |
-| 03  | markets       | No             | List active markets               |
-| 04  | deposit       | No             | Deposit collateral                |
-| 05  | balance       | No             | Check balance and positions       |
-| 06  | withdraw      | No             | Request withdrawal                |
-| 07  | cash-transfer | Yes            | Move funds between cross/isolated |
-| 08  | market-order  | Yes            | Open/close position at market     |
-| 09  | place-order   | Yes            | Place limit order                 |
-| 10  | cancel-order  | Yes            | Cancel existing order             |
+| #   | Script             | Requires Agent | Description                                  |
+| --- | ------------------ | -------------- | -------------------------------------------- |
+| 01  | agent              | No             | Approve agent wallet                         |
+| 02  | assets             | No             | List available assets                        |
+| 03  | markets            | No             | List active markets                          |
+| 04  | deposit            | No             | Deposit collateral                           |
+| 05  | balance            | No             | Check balance and positions                  |
+| 06  | withdraw           | No             | Request withdrawal                           |
+| 07  | cash-transfer      | Yes            | Move funds between cross/isolated            |
+| 08  | market-order       | Yes            | Open/close position at market                |
+| 09  | place-order        | Yes            | Place limit order                            |
+| 10  | cancel-order       | Yes            | Cancel existing order                        |
+| 11  | bulk-place-orders  | Yes            | Efficient way to place multiple limit orders |
+
