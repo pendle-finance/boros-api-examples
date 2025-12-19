@@ -11,7 +11,8 @@
     "example:cash-transfer": "ts-node examples/07-cash-transfer.ts",
     "example:market-order": "ts-node examples/08-market-order.ts",
     "example:place-order": "ts-node examples/09-place-order.ts",
-    "example:cancel-order": "ts-node examples/10-cancel-order.ts"
+    "example:cancel-order": "ts-node examples/10-cancel-order.ts",
+    "example:bulk-place-orders": "ts-node examples/11-bulk-place-orders.ts"
   },
   "dependencies": {
     "@pendle/boros-offchain-math": "^1.0.6",
