@@ -33,6 +33,7 @@ async function main() {
   console.table(
     data.assets.map((a) => ({
       tokenId: a.tokenId,
+      address: a.address,
       symbol: a.symbol,
       name: a.name,
       decimals: a.decimals,

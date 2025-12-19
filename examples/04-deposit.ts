@@ -22,7 +22,7 @@ type DepositCalldata = { data: Hex; from: Address; to: Address; gas: string };
 
 async function main() {
   const config = loadConfig();
-  const amount = parseUnits("1", 6);
+  const amount = parseUnits("11", 6);
 
   const account = privateKeyToAccount(config.privateKey);
   const client = createWalletClient({
