@@ -80,4 +80,5 @@ Conversion between rate and tick using SDK helpers:
 | 09  | place-order        | Yes            | Place limit order                            |
 | 10  | cancel-order       | Yes            | Cancel existing order                        |
 | 11  | bulk-place-orders  | Yes            | Efficient way to place multiple limit orders |
+| 12  | top-up-gas-account | Yes            | Top up gas account from cross margin         |
 
