@@ -135,8 +135,6 @@ async function main() {
     }
   );
 
-  console.log("Deposit data:", walletAccount.address, depositAmount);
-
   // Check and approve if needed
   const allowance = await publicClient.readContract({
     address: USDT0,
