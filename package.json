@@ -13,7 +13,8 @@
     "example:place-order": "ts-node examples/09-place-order.ts",
     "example:cancel-order": "ts-node examples/10-cancel-order.ts",
     "example:bulk-place-orders": "ts-node examples/11-bulk-place-orders.ts",
-    "example:top-up-gas-account": "ts-node examples/12-top-up-gas-account.ts"
+    "example:top-up-gas-account": "ts-node examples/12-top-up-gas-account.ts",
+    "example:top-up-isolated-account": "ts-node examples/13-top-up-isolated-account.ts"
   },
   "dependencies": {
     "@pendle/boros-offchain-math": "^1.0.6",
