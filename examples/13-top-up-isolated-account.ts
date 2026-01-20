@@ -155,12 +155,12 @@ async function main() {
     console.log("Approve txHash:", approveTxHash);
   }
 
-  // const depositTxHash = await client.sendTransaction({
-  //   to: depositData.to,
-  //   data: depositData.data,
-  // });
-  // await waitForTransaction(publicClient, depositTxHash);
-  // console.log("Deposit txHash:", depositTxHash);
+  const depositTxHash = await client.sendTransaction({
+    to: depositData.to,
+    data: depositData.data,
+  });
+  await waitForTransaction(publicClient, depositTxHash);
+  console.log("Deposit txHash:", depositTxHash);
 
   // Step 3: Cash transfer from cross to isolated (off-chain)
   console.log("\n=== Cash Transfer: Cross -> Isolated ===");
@@ -180,7 +180,7 @@ async function main() {
     config.apiBaseUrl,
     agent,
     walletAccount.address,
-    transferData.calldatas
+    transferData.calldatas,
   );
 
   console.log("Cash transfer result:", transferResult);
