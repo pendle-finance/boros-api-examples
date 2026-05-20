@@ -1,13 +1,9 @@
+import { getRouterAddress } from "@pendle/boros-sdk-public";
 import axios from "axios";
-import { createWalletClient, encodeFunctionData, http } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { RouterAbi } from "../abis/RouterAbi";
-import { loadConfig } from "../src/utils/config";
-import { run, TxResponse } from "../src/utils/setup";
-import {
-  EIP712_DOMAIN_TYPES,
-  PENDLE_BOROS_ROUTER_DOMAIN,
-} from "../src/utils/signing";
+import { encodeFunctionData } from "viem";
+import { arbitrum } from "viem/chains";
+import { API_BASE_URL } from "../src/utils/api";
+import { run, setup, TxResponse } from "../src/utils/setup";
 import { getCurrentTime_s, WEEK_s } from "../src/utils/time";
 
 /**
@@ -24,32 +20,39 @@ import { getCurrentTime_s, WEEK_s } from "../src/utils/time";
  * 2. Add this key to .env as AGENT_PRIVATE_KEY
  * 3. Run this script to approve the agent on-chain
  * 4. Use the agent key in subsequent trading examples (07–11)
- *
- * Flow:
- *   1. Build the on-chain `approveAgent` calldata locally (EIP-712 signed by
- *      the user's wallet) — this is the only thing the user signs in this step.
- *   2. Hand the calldata to `POST /apis/v1/send-txs/approve`. The send-txs
- *      service relays the signed call on-chain (free action — gas balance is
- *      not charged here).
  */
-async function main() {
-  const config = loadConfig();
 
-  const walletAccount = privateKeyToAccount(config.privateKey);
-  const walletClient = createWalletClient({
-    account: walletAccount,
-    transport: http(config.rpcUrl),
-  });
-
-  const agentAccount = privateKeyToAccount(config.agentPrivateKey);
+// === Version 1 (default): direct API calls ===
+//
+// 1. Build the on-chain `approveAgent` calldata locally (EIP-712 signed by
+//    the user's wallet) — this is the only thing the user signs in this step.
+// 2. Hand the calldata to `POST /v1/send-txs/approve`. The send-txs service
+//    relays the signed call on-chain (free action — gas balance is not
+//    charged here).
+async function mainDirect() {
+  const { account, walletClient, agent } = setup();
 
   const approveMessage = {
-    root: walletAccount.address,
+    root: account.address,
     accountId: 0,
-    agent: agentAccount.address,
+    agent: agent.walletClient.account!.address,
     expiry: BigInt(getCurrentTime_s() + WEEK_s),
     nonce: BigInt(Date.now() * 1000),
   };
+
+  const PENDLE_BOROS_ROUTER_DOMAIN = {
+    name: "Pendle Boros Router",
+    version: "1.0",
+    chainId: BigInt(arbitrum.id),
+    verifyingContract: getRouterAddress(),
+  } as const;
+
+  const EIP712_DOMAIN_TYPES = [
+    { name: "name", type: "string" },
+    { name: "version", type: "string" },
+    { name: "chainId", type: "uint256" },
+    { name: "verifyingContract", type: "address" },
+  ] as const;
 
   const approveAgentMessageTypes = [
     { name: "root", type: "address" },
@@ -60,7 +63,7 @@ async function main() {
   ] as const;
 
   const approveSignature = await walletClient.signTypedData({
-    account: walletAccount,
+    account,
     domain: PENDLE_BOROS_ROUTER_DOMAIN,
     types: {
       EIP712Domain: EIP712_DOMAIN_TYPES,
@@ -70,14 +73,37 @@ async function main() {
     message: approveMessage,
   });
 
+  const approveAgentAbi = [
+    {
+      type: "function",
+      name: "approveAgent",
+      stateMutability: "nonpayable",
+      inputs: [
+        {
+          name: "msg",
+          type: "tuple",
+          components: [
+            { name: "root", type: "address" },
+            { name: "accountId", type: "uint8" },
+            { name: "agent", type: "address" },
+            { name: "expiry", type: "uint64" },
+            { name: "nonce", type: "uint64" },
+          ],
+        },
+        { name: "signature", type: "bytes" },
+      ],
+      outputs: [],
+    },
+  ] as const;
+
   const approveAgentCalldata = encodeFunctionData({
-    abi: RouterAbi,
+    abi: approveAgentAbi,
     functionName: "approveAgent",
     args: [approveMessage, approveSignature],
   });
 
   const { data } = await axios.post<{ approveAgentResult: TxResponse }>(
-    `${config.apiBaseUrl}/apis/v1/send-txs/approve`,
+    `${API_BASE_URL}/v1/send-txs/approve`,
     {
       approveAgentCalldata,
       skipReceipt: false,
@@ -87,4 +113,17 @@ async function main() {
   console.log(data);
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+//
+// `exchange.approveAgent` performs all the steps above (build calldata,
+// EIP-712 sign with the user's wallet, POST to `/v1/send-txs/approve`).
+async function _mainSdk() {
+  const { exchange } = setup();
+
+  const expiry_s = getCurrentTime_s() + WEEK_s;
+  const result = await exchange.approveAgent(undefined, undefined, expiry_s);
+
+  console.log(result);
+}
+
+run(mainDirect);

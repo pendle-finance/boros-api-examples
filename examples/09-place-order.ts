@@ -4,8 +4,9 @@ import {
   MarketAccLib,
   Side,
   TimeInForce,
-} from "@pendle/sdk-boros";
+} from "@pendle/boros-sdk-public";
 import axios from "axios";
+import { API_BASE_URL } from "../src/utils/api";
 import { AgentCall, run, setup, signAndSubmit } from "../src/utils/setup";
 
 // Run `yarn example:markets` to see available markets
@@ -17,19 +18,18 @@ type PlaceOrderResponse = {
   })[];
 };
 
-async function main() {
-  const { config, account, agent } = setup();
+// === Version 1 (default): direct API calls ===
+//
+// The simple, UI-style `/place-order` endpoint accepts `rate` (APR as a
+// float) and the backend handles the tick conversion. For a resting limit
+// order, GOOD_TIL_CANCELLED with no `slippage` rests at exactly `rate`.
+async function mainDirect() {
+  const { account, agent } = setup();
 
-  // MarketAccLib.pack(address, accountId, tokenId, marketId)
-  // - tokenId: 3 = USDT0
-  // - marketId: CROSS_MARKET_ID for cross-margin, or specific marketId for isolated
   const marketAcc = MarketAccLib.pack(account.address, 0, 3, CROSS_MARKET_ID);
 
-  // Use the simple, UI-style `/place-order` endpoint: pass `rate` (APR as a
-  // float) and the backend handles the tick conversion. For a resting limit
-  // order, GOOD_TIL_CANCELLED with no `slippage` rests at exactly `rate`.
   const { data } = await axios.post<PlaceOrderResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/place-order`,
+    `${API_BASE_URL}/v1/calldata-builder/agent/place-order`,
     {
       marketAcc,
       marketId: MARKET_ID,
@@ -40,13 +40,24 @@ async function main() {
     }
   );
 
-  const result = await signAndSubmit(
-    config.apiBaseUrl,
-    agent,
-    account.address,
-    data.calls
-  );
+  const result = await signAndSubmit(agent, account.address, data.calls);
   console.log("Order result:", result);
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+async function _mainSdk() {
+  const { exchange, account } = setup();
+  const marketAcc = MarketAccLib.pack(account.address, 0, 3, CROSS_MARKET_ID);
+
+  const result = await exchange.placeOrder({
+    marketAcc,
+    marketId: MARKET_ID,
+    side: Side.LONG,
+    size: FixedX18.fromNumber(11).value,
+    rate: 0.02, // 2% APR
+    tif: TimeInForce.GOOD_TIL_CANCELLED,
+  });
+  console.log("Order result:", result);
+}
+
+run(mainDirect);

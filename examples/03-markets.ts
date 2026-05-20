@@ -1,6 +1,6 @@
 import axios from "axios";
-import { loadConfig } from "../src/utils/config";
-import { run } from "../src/utils/setup";
+import { API_BASE_URL } from "../src/utils/api";
+import { run, setup } from "../src/utils/setup";
 
 type Market = {
   marketId: number;
@@ -41,15 +41,15 @@ type Market = {
   };
 };
 
-async function main() {
-  const config = loadConfig();
-
-  // /v1/markets is cursor-paginated; this fetch returns the first page.
-  // For full pagination, follow `resumeToken` until the response omits it.
+// === Version 1 (default): direct API calls ===
+//
+// `/v1/markets` is cursor-paginated; this fetch returns the first page.
+// For full pagination, follow `resumeToken` until the response omits it.
+async function mainDirect() {
   const { data } = await axios.get<{
     results: Market[];
     resumeToken?: string;
-  }>(`${config.apiBaseUrl}/apis/v1/markets`, {
+  }>(`${API_BASE_URL}/v1/markets`, {
     params: {
       isMatured: false,
       isUiWhitelisted: true,
@@ -77,4 +77,27 @@ async function main() {
   }
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+//
+// `getAllMarkets` follows `resumeToken` internally and returns every entry.
+async function _mainSdk() {
+  const { exchange } = setup();
+  const results = await exchange.getAllMarkets({
+    isMatured: false,
+    isUiWhitelisted: true,
+  });
+
+  console.log(`Active UI-whitelisted markets (${results.length}):`);
+  console.table(
+    results.map((m) => ({
+      marketId: m.marketId,
+      name: m.imData.name,
+      maturity: new Date(m.imData.maturity * 1000).toISOString().split("T")[0],
+      tickStep: m.imData.tickStep,
+      maxLeverage: `${m.metadata.maxLeverage}x`,
+      markApr: m.data.markApr.toFixed(4),
+    }))
+  );
+}
+
+run(mainDirect);

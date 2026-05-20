@@ -15,11 +15,9 @@ export const loadConfig = () => {
   const rpcUrl = requireEnv("RPC_URL");
   const privateKey = requireEnv<Hex>("PRIVATE_KEY");
   const agentPrivateKey = requireEnv<Hex>("AGENT_PRIVATE_KEY");
-  const apiBaseUrl = requireEnv("API_BASE_URL");
   return {
     rpcUrl,
     privateKey,
     agentPrivateKey,
-    apiBaseUrl,
   };
 };

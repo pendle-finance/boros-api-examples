@@ -1,18 +1,13 @@
-import { CROSS_MARKET_ID, MarketAccLib, waitForTransaction } from "@pendle/sdk-boros";
-import axios from "axios";
 import {
-  createPublicClient,
-  createWalletClient,
-  erc20Abi,
-  Hex,
-  http,
-  parseUnits,
-} from "viem";
-import { Address, privateKeyToAccount } from "viem/accounts";
-import { arbitrum } from "viem/chains";
-import { getAddresses } from "../src/utils/addresses";
-import { loadConfig } from "../src/utils/config";
-import { run } from "../src/utils/setup";
+  CROSS_MARKET_ID,
+  MarketAccLib,
+  getRouterAddress,
+  waitForTransaction,
+} from "@pendle/boros-sdk-public";
+import axios from "axios";
+import { Address, Hex, erc20Abi, parseUnits } from "viem";
+import { API_BASE_URL } from "../src/utils/api";
+import { run, setup } from "../src/utils/setup";
 
 // see 02-assets.ts
 const USDT0 = "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9";
@@ -25,20 +20,10 @@ type UserCalldataResponse = {
   gas?: string;
 };
 
-async function main() {
-  const config = loadConfig();
+// === Version 1 (default): direct API calls ===
+async function mainDirect() {
+  const { account, walletClient, publicClient } = setup();
   const amount = parseUnits("11", 6);
-
-  const account = privateKeyToAccount(config.privateKey);
-  const client = createWalletClient({
-    account,
-    chain: arbitrum,
-    transport: http(config.rpcUrl),
-  });
-  const publicClient = createPublicClient({
-    chain: arbitrum,
-    transport: http(config.rpcUrl),
-  });
 
   // `marketAcc` packs (root, accountId, tokenId, marketId). For cross margin
   // deposits, the marketId segment is CROSS_MARKET_ID (0xFFFFFF).
@@ -50,7 +35,7 @@ async function main() {
   );
 
   const { data } = await axios.post<UserCalldataResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/user/deposit`,
+    `${API_BASE_URL}/v1/calldata-builder/user/deposit`,
     {
       marketAcc,
       // `amount` is the bigint string in the token's native decimals
@@ -63,21 +48,21 @@ async function main() {
     address: USDT0,
     abi: erc20Abi,
     functionName: "allowance",
-    args: [account.address, getAddresses().router],
+    args: [account.address, getRouterAddress()],
   });
 
   if (allowance < amount) {
-    const approveTxHash = await client.writeContract({
+    const approveTxHash = await walletClient.writeContract({
       address: USDT0,
       abi: erc20Abi,
       functionName: "approve",
-      args: [getAddresses().router, amount],
+      args: [getRouterAddress(), amount],
     });
     await waitForTransaction(publicClient, approveTxHash);
     console.log("Approve txHash:", approveTxHash);
   }
 
-  const depositTxHash = await client.sendTransaction({
+  const depositTxHash = await walletClient.sendTransaction({
     to: data.to,
     data: data.calldata,
   });
@@ -85,4 +70,22 @@ async function main() {
   console.log("Deposit txHash:", depositTxHash);
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+//
+// `exchange.deposit` does the calldata build + ERC-20 approve + on-chain
+// send in one call.
+async function _mainSdk() {
+  const { exchange, account } = setup();
+
+  const receipt = await exchange.deposit({
+    userAddress: account.address,
+    tokenId: USDT0_TOKEN_ID,
+    amount: parseUnits("11", 6),
+    accountId: 0,
+    marketId: CROSS_MARKET_ID,
+  });
+
+  console.log("Deposit txHash:", receipt.transactionHash);
+}
+
+run(mainDirect);

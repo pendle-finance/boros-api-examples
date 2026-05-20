@@ -1,16 +1,8 @@
-import { waitForTransaction } from "@pendle/sdk-boros";
+import { waitForTransaction } from "@pendle/boros-sdk-public";
 import axios from "axios";
-import {
-  createPublicClient,
-  createWalletClient,
-  Hex,
-  http,
-  parseUnits,
-} from "viem";
-import { Address, privateKeyToAccount } from "viem/accounts";
-import { arbitrum } from "viem/chains";
-import { loadConfig } from "../src/utils/config";
-import { run } from "../src/utils/setup";
+import { Address, Hex, parseUnits } from "viem";
+import { API_BASE_URL } from "../src/utils/api";
+import { run, setup } from "../src/utils/setup";
 
 type UserCalldataResponse = {
   calldata: Hex;
@@ -22,24 +14,15 @@ type UserCalldataResponse = {
 // After submitting a withdraw request, wait 10 minutes for assets to be
 // transferred to your wallet — a backend bot calls the finalize step on a
 // timer once the cooldown elapses.
-async function main() {
-  const config = loadConfig();
 
-  const walletAccount = privateKeyToAccount(config.privateKey);
-  const walletClient = createWalletClient({
-    account: walletAccount,
-    chain: arbitrum,
-    transport: http(config.rpcUrl),
-  });
-  const publicClient = createPublicClient({
-    chain: arbitrum,
-    transport: http(config.rpcUrl),
-  });
+// === Version 1 (default): direct API calls ===
+async function mainDirect() {
+  const { account, walletClient, publicClient } = setup();
 
   const { data } = await axios.post<UserCalldataResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/user/request-withdrawal`,
+    `${API_BASE_URL}/v1/calldata-builder/user/request-withdrawal`,
     {
-      root: walletAccount.address,
+      root: account.address,
       tokenId: 3, // USDT0 (see 02-assets.ts)
       // `amount` is the bigint string in the token's native decimals
       // (USDT0 has 6 decimals).
@@ -57,4 +40,17 @@ async function main() {
   console.log("Withdraw request tx:", txHash);
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+async function _mainSdk() {
+  const { exchange, account } = setup();
+
+  const receipt = await exchange.withdraw({
+    userAddress: account.address,
+    tokenId: 3,
+    amount: parseUnits("1", 6),
+  });
+
+  console.log("Withdraw request tx:", receipt.transactionHash);
+}
+
+run(mainDirect);

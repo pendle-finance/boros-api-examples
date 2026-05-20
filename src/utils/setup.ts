@@ -1,7 +1,9 @@
-import { Agent, bulkSignWithAgentV2 } from "@pendle/sdk-boros";
+import { Agent, Exchange, bulkSignWithAgentV2 } from "@pendle/boros-sdk-public";
 import axios from "axios";
-import { Hex } from "viem";
+import { Hex, createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { arbitrum } from "viem/chains";
+import { API_BASE_URL } from "./api";
 import { loadConfig } from "./config";
 
 export type AgentCall = {
@@ -16,11 +18,38 @@ export type TxResponse = {
   error?: string;
 };
 
+/**
+ * Sets up the shared primitives used by both versions of every example:
+ * - `account` / `agent`: viem account + EIP-712 agent for signing.
+ * - `walletClient` / `publicClient`: viem clients on Arbitrum.
+ * - `exchange`: the new SDK's high-level wrapper (used by the SDK version of
+ *   each example). The SDK defaults to `https://api-boros.pendle.finance/apis`
+ *   under the hood, so no base-URL configuration is needed.
+ */
 export function setup() {
   const config = loadConfig();
   const account = privateKeyToAccount(config.privateKey);
   const agent = Agent.createFromPrivateKey(config.agentPrivateKey);
-  return { config, account, agent };
+
+  const walletClient = createWalletClient({
+    account,
+    chain: arbitrum,
+    transport: http(config.rpcUrl),
+  });
+  const publicClient = createPublicClient({
+    chain: arbitrum,
+    transport: http(config.rpcUrl),
+  });
+
+  const exchange = new Exchange(
+    walletClient,
+    account.address,
+    /* accountId */ 0,
+    [config.rpcUrl],
+    agent
+  );
+
+  return { config, account, agent, walletClient, publicClient, exchange };
 }
 
 /**
@@ -28,9 +57,12 @@ export function setup() {
  * single batch to the open-api send-txs service. The accountId from each
  * `calls[i]` is threaded into the signed message so multi-sub-account
  * batches (rare, but supported) work transparently.
+ *
+ * Used by the "direct API" version of the agent-signed examples. The SDK
+ * version uses `exchange.bulkSignAndExecute()` (or the higher-level
+ * `exchange.placeOrder`, `cancelOrders`, etc.) instead.
  */
 export async function signAndSubmit(
-  apiBaseUrl: string,
   agent: Agent,
   root: Hex,
   calls: AgentCall[]
@@ -45,7 +77,7 @@ export async function signAndSubmit(
   });
 
   const { data } = await axios.post<TxResponse[]>(
-    `${apiBaseUrl}/apis/v1/send-txs/bulk-calls`,
+    `${API_BASE_URL}/v1/send-txs/bulk-calls`,
     {
       datas: signed.map((s) => ({
         agent: s.agent,

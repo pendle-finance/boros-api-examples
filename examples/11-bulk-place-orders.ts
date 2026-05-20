@@ -1,9 +1,9 @@
 /**
  * Bulk Place Orders Example
  *
- * This example demonstrates the **advanced** `/place-orders` endpoint, which
- * is the right tool for market-making / liquidity-provisioning flows that
- * need to place many resting orders at once, with optional atomic cancels.
+ * Demonstrates the **advanced** `/place-orders` endpoint — the right tool for
+ * market-making / liquidity-provisioning flows that need to place many resting
+ * orders at once, with optional atomic cancels.
  *
  * Why use it:
  *
@@ -18,27 +18,30 @@
  *
  * - `bulkOrders` placements do NOT match against the AMM. They are
  *   orderbook-only resting orders, intended for liquidity provisioning.
- * - For the common single-order UI case, use `POST /v1/calldata-builder/agent/place-order`
+ * - For the common single-order UI case, use `/v1/calldata-builder/agent/place-order`
  *   instead (see `09-place-order.ts`).
  * - Every `bulkOrders.bulks[i]` must supply exactly one of `desiredRate` /
  *   `slippage`.
  * - Every entry under the same `orderRequests[]` must share `(root, accountId)`.
  */
 
-import { FixedX18 } from "@pendle/boros-offchain-math";
+import { FixedX18, estimateTickForRate } from "@pendle/boros-offchain-math";
 import {
   CROSS_MARKET_ID,
-  estimateTickForRate,
   MarketAccLib,
   Side,
   TimeInForce,
-} from "@pendle/sdk-boros";
+} from "@pendle/boros-sdk-public";
 import axios from "axios";
+import { API_BASE_URL } from "../src/utils/api";
 import { AgentCall, run, setup, signAndSubmit } from "../src/utils/setup";
 import { sleep_s } from "../src/utils/time";
 
 // Run `yarn example:markets` to see available markets
 const MARKET_ID = 135; // BTCUSDC (2026-06-26)
+
+// tickStep: from market.imData.tickStep (run `yarn example:markets`)
+const TICK_STEP = 2n;
 
 enum OrderStatusV2 {
   Filling = 0,
@@ -83,16 +86,11 @@ const formatOrder = (o: Order) => ({
   status: OrderStatusV2[o.status] ?? o.status,
 });
 
-async function getOrders(
-  apiBaseUrl: string,
-  root: string,
-  accountId: number,
-  isActive: boolean
-) {
+async function getOrdersDirect(root: string, accountId: number, isActive: boolean) {
   const { data } = await axios.get<{
     results: Order[];
     resumeToken?: string;
-  }>(`${apiBaseUrl}/apis/v1/accounts/orders`, {
+  }>(`${API_BASE_URL}/v1/accounts/orders`, {
     params: {
       root,
       accountId,
@@ -104,44 +102,39 @@ async function getOrders(
   return data;
 }
 
-async function main() {
-  const { config, account, agent } = setup();
+// === Version 1 (default): direct API calls ===
+async function mainDirect() {
+  const { account, agent } = setup();
 
   // MarketAccLib.pack(address, accountId, tokenId, marketId)
   // - tokenId: 3 = USDT0
   // - marketId: CROSS_MARKET_ID for cross-margin, or specific marketId for isolated
   const marketAcc = MarketAccLib.pack(account.address, 0, 3, CROSS_MARKET_ID);
 
-  // tickStep: from market.imData.tickStep (run `yarn example:markets`)
-  const TICK_STEP = 2n;
-
   // ========================================
   // Step 1: Place a single seed order
   // ========================================
-  // Use the simple `/place-order` endpoint for the first single order.
   console.log("\n=== Step 1: Placing a single seed order ===");
 
   const { data: placeOrderData } = await axios.post<PlaceOrdersResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/place-order`,
+    `${API_BASE_URL}/v1/calldata-builder/agent/place-order`,
     {
       marketAcc,
       marketId: MARKET_ID,
       side: Side.LONG,
       size: FixedX18.fromNumber(11).value.toString(),
       tif: TimeInForce.GOOD_TIL_CANCELLED,
-      rate: 0.02, // 5% APR
+      rate: 0.02,
     }
   );
 
   const placeResult = await signAndSubmit(
-    config.apiBaseUrl,
     agent,
     account.address,
     placeOrderData.calls
   );
   console.log("Order placed:", placeResult);
 
-  // Wait for indexer to update
   await sleep_s(2);
 
   // ========================================
@@ -149,12 +142,7 @@ async function main() {
   // ========================================
   console.log("\n=== Step 2: Getting active orders ===");
 
-  const activeOrders = await getOrders(
-    config.apiBaseUrl,
-    account.address,
-    0,
-    true
-  );
+  const activeOrders = await getOrdersDirect(account.address, 0, true);
 
   console.log(`Found ${activeOrders.results.length} active orders:`);
   console.table(activeOrders.results.map(formatOrder));
@@ -167,20 +155,16 @@ async function main() {
   // ========================================
   // Step 3: bulkOrders — cancel 1 order and place 2 more atomically
   // ========================================
-  console.log(
-    "\n=== Step 3: bulkOrders — cancel 1 + place 2 in one on-chain call ==="
-  );
+  console.log("\n=== Step 3: bulkOrders — cancel 1 + place 2 in one call ===");
 
   const orderToCancel = activeOrders.results[0];
   console.log(`Will cancel order: ${orderToCancel.orderId}`);
 
-  // Prepare 2 new orders at different ticks
   const limitTick2 = estimateTickForRate(
     FixedX18.fromNumber(0.02), // 2% APR
     TICK_STEP,
     false // round down
   );
-
   const limitTick3 = estimateTickForRate(
     FixedX18.fromNumber(0.01), // 1% APR
     TICK_STEP,
@@ -188,7 +172,7 @@ async function main() {
   );
 
   const { data: bulkOrderData } = await axios.post<PlaceOrdersResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/place-orders`,
+    `${API_BASE_URL}/v1/calldata-builder/agent/place-orders`,
     {
       orderRequests: [
         {
@@ -227,14 +211,12 @@ async function main() {
   );
 
   const bulkResult = await signAndSubmit(
-    config.apiBaseUrl,
     agent,
     account.address,
     bulkOrderData.calls
   );
   console.log("Bulk operation result:", bulkResult);
 
-  // Wait for indexer to update
   await sleep_s(2);
 
   // ========================================
@@ -242,25 +224,83 @@ async function main() {
   // ========================================
   console.log("\n=== Step 4: Current state ===");
 
-  const updatedActive = await getOrders(
-    config.apiBaseUrl,
-    account.address,
-    0,
-    true
-  );
-
+  const updatedActive = await getOrdersDirect(account.address, 0, true);
   console.log(`\nActive orders (${updatedActive.results.length} shown):`);
   console.table(updatedActive.results.map(formatOrder));
 
-  const historical = await getOrders(
-    config.apiBaseUrl,
-    account.address,
-    0,
-    false
-  );
-
+  const historical = await getOrdersDirect(account.address, 0, false);
   console.log(`\nHistorical limit orders (${historical.results.length} shown):`);
   console.table(historical.results.map(formatOrder));
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+//
+// `exchange.bulkPlaceOrders` accepts the same `orderRequests` shape with
+// bigints instead of stringified bigints, and signs + executes in one call.
+async function _mainSdk() {
+  const { exchange, account } = setup();
+  const marketAcc = MarketAccLib.pack(account.address, 0, 3, CROSS_MARKET_ID);
+
+  console.log("\n=== Step 1: Placing a single seed order ===");
+  const limitTickSeed = Number(
+    estimateTickForRate(FixedX18.fromNumber(0.02), TICK_STEP, true)
+  );
+  const placed = await exchange.placeOrder({
+    marketAcc,
+    marketId: MARKET_ID,
+    side: Side.LONG,
+    size: FixedX18.fromNumber(11).value,
+    limitTick: limitTickSeed,
+    tif: TimeInForce.GOOD_TIL_CANCELLED,
+  });
+  console.log("Order placed:", placed);
+
+  await sleep_s(2);
+
+  console.log("\n=== Step 2: Getting active orders ===");
+  const activeOrders = await exchange.getOrdersPage({
+    isActive: true,
+    orderType: [OrderType.LIMIT],
+    limit: 50,
+  });
+  console.log(`Found ${activeOrders.results.length} active orders.`);
+  if (activeOrders.results.length === 0) return;
+
+  const orderToCancel = activeOrders.results[0];
+
+  console.log("\n=== Step 3: bulkOrders — cancel 1 + place 2 ===");
+  const limitTick2 = Number(
+    estimateTickForRate(FixedX18.fromNumber(0.02), TICK_STEP, false)
+  );
+  const limitTick3 = Number(
+    estimateTickForRate(FixedX18.fromNumber(0.01), TICK_STEP, false)
+  );
+
+  const bulkResult = await exchange.bulkPlaceOrders({
+    orderRequests: [
+      {
+        cross: true,
+        slippage: 1,
+        bulks: [
+          {
+            marketId: MARKET_ID,
+            cancelData: {
+              ids: [BigInt(orderToCancel.orderId)],
+              isAll: false,
+              isStrict: true,
+            },
+            orders: {
+              sizes: [FixedX18.fromNumber(15).value, FixedX18.fromNumber(20).value],
+              limitTicks: [limitTick2, limitTick3],
+              tif: TimeInForce.GOOD_TIL_CANCELLED,
+              side: Side.LONG,
+            },
+          },
+        ],
+      },
+    ],
+  });
+  console.log("Bulk operation result:", bulkResult);
+}
+
+run(mainDirect);

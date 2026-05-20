@@ -4,8 +4,9 @@ import {
   MarketAccLib,
   Side,
   TimeInForce,
-} from "@pendle/sdk-boros";
+} from "@pendle/boros-sdk-public";
 import axios from "axios";
+import { API_BASE_URL } from "../src/utils/api";
 import { AgentCall, run, setup, signAndSubmit } from "../src/utils/setup";
 import { sleep_s } from "../src/utils/time";
 
@@ -33,8 +34,9 @@ type PlaceOrderResponse = {
   })[];
 };
 
-async function main() {
-  const { config, account, agent } = setup();
+// === Version 1 (default): direct API calls ===
+async function mainDirect() {
+  const { account, agent } = setup();
 
   // MarketAccLib.pack(address, accountId, tokenId, marketId)
   // - tokenId: 3 = USDT0 (run `yarn example:assets`)
@@ -46,7 +48,7 @@ async function main() {
   // If neither `slippage` nor `desiredRate` is provided, the backend
   // applies the default 5% slippage for FOK market orders.
   const { data: openData } = await axios.post<PlaceOrderResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/place-order`,
+    `${API_BASE_URL}/v1/calldata-builder/agent/place-order`,
     {
       marketAcc,
       marketId: MARKET_ID,
@@ -56,12 +58,7 @@ async function main() {
       slippage: 0.05, // 5% absolute slippage in APR
     }
   );
-  const openResult = await signAndSubmit(
-    config.apiBaseUrl,
-    agent,
-    account.address,
-    openData.calls
-  );
+  const openResult = await signAndSubmit(agent, account.address, openData.calls);
   console.log("Open:", openResult);
 
   await sleep_s(5);
@@ -72,7 +69,7 @@ async function main() {
       results: [marketAccInfo],
     },
   } = await axios.post<{ results: MarketAccInfo[] }>(
-    `${config.apiBaseUrl}/apis/v1/accounts/market-acc-infos`,
+    `${API_BASE_URL}/v1/accounts/market-acc-infos`,
     { marketAccs: [marketAcc] }
   );
   const positionSize = marketAccInfo.positions.find(
@@ -90,7 +87,7 @@ async function main() {
 
   // Close position (SHORT)
   const { data: closeData } = await axios.post<PlaceOrderResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/place-order`,
+    `${API_BASE_URL}/v1/calldata-builder/agent/place-order`,
     {
       marketAcc,
       marketId: MARKET_ID,
@@ -100,13 +97,48 @@ async function main() {
       slippage: 0.05,
     }
   );
-  const closeResult = await signAndSubmit(
-    config.apiBaseUrl,
-    agent,
-    account.address,
-    closeData.calls
-  );
+  const closeResult = await signAndSubmit(agent, account.address, closeData.calls);
   console.log("Close:", closeResult);
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+async function _mainSdk() {
+  const { exchange, account } = setup();
+  const marketAcc = MarketAccLib.pack(account.address, 0, 3, CROSS_MARKET_ID);
+
+  const open = await exchange.placeOrder({
+    marketAcc,
+    marketId: MARKET_ID,
+    side: Side.LONG,
+    size: FixedX18.fromNumber(SIZE).value,
+    tif: TimeInForce.FILL_OR_KILL,
+    slippage: 0.05,
+  });
+  console.log("Open:", open);
+
+  await sleep_s(5);
+
+  const positions = await exchange.getUserPositions({
+    tokenId: 3,
+    marketId: MARKET_ID,
+  });
+  const position = positions.find((p) => p.marketId === MARKET_ID);
+  if (!position || position.signedSize === 0n) {
+    console.log("No position found");
+    return;
+  }
+  const positionSize = position.signedSize;
+  console.log("Position size:", FixedX18.fromRawValue(positionSize).toNumber());
+
+  const close = await exchange.placeOrder({
+    marketAcc,
+    marketId: MARKET_ID,
+    side: Side.SHORT,
+    size: positionSize < 0n ? -positionSize : positionSize,
+    tif: TimeInForce.FILL_OR_KILL,
+    slippage: 0.05,
+  });
+  console.log("Close:", close);
+}
+
+run(mainDirect);
