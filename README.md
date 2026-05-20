@@ -2,6 +2,10 @@
 
 Minimal TypeScript examples for integrating with BOROS trading APIs.
 
+These examples target the v1 Boros Open API set served under `/apis/v1/...`
+on `staging-api.boros.finance` / `api.boros.finance`. The interactive docs
+(OpenAPI spec) are at https://staging-api.boros.finance/apis/docs.
+
 ## Quick Start
 
 1. Clone and install:
@@ -79,6 +83,7 @@ Conversion between rate and tick using SDK helpers:
 | 08  | market-order       | Yes            | Open/close position at market                |
 | 09  | place-order        | Yes            | Place limit order                            |
 | 10  | cancel-order       | Yes            | Cancel existing order                        |
-| 11  | bulk-place-orders  | Yes            | Efficient way to place multiple limit orders |
-| 12  | top-up-gas-account | Yes            | Top up gas account from cross margin         |
+| 11  | bulk-place-orders  | Yes            | Place many resting orders + atomic cancel    |
+| 12  | top-up-gas-account | Yes            | Top up off-chain gas balance from collateral |
+| 13  | top-up-isolated-account | Yes        | Fund an isolated-only market account         |
 

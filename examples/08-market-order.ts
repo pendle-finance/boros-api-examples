@@ -3,34 +3,34 @@ import {
   CROSS_MARKET_ID,
   MarketAccLib,
   Side,
-  TICK_MAX_VALUE,
-  TICK_MIN_VALUE,
   TimeInForce,
 } from "@pendle/sdk-boros";
 import axios from "axios";
-import { Hex } from "viem";
-import { run, setup, signAndSubmit } from "../src/utils/setup";
+import { AgentCall, run, setup, signAndSubmit } from "../src/utils/setup";
 import { sleep_s } from "../src/utils/time";
 
 // Run `yarn example:markets` to see available markets
-const MARKET_ID = 21; // BTC-USD (2025-12-26)
-const SIZE = 1; // 1 USDT notional (internally 18 decimals)
+const MARKET_ID = 135; // BTCUSDC (2026-06-26)
+const SIZE = 11; // 1 USDT notional (internally 18 decimals)
 
 type Position = {
   marketId: number;
   signedSize: string;
   positionValue: string;
-  liquidationApr: string;
-  initialMargin: string;
-  maintMargin: string;
-  orders: unknown[];
 };
 
 type MarketAccInfo = {
   totalCash: string;
+  netBalance: string;
   positions: Position[];
   availableInitialMargin: string;
   availableMaintMargin: string;
+};
+
+type PlaceOrderResponse = {
+  calls: (AgentCall & {
+    resolved?: { limitTick: string; actualRate?: number };
+  })[];
 };
 
 async function main() {
@@ -41,32 +41,26 @@ async function main() {
   // - marketId: CROSS_MARKET_ID for cross-margin, or specific marketId for isolated
   const marketAcc = MarketAccLib.pack(account.address, 0, 3, CROSS_MARKET_ID);
 
-  // Open position (LONG)
-  const { data: openData } = await axios.post<{ calldatas: Hex[] }>(
-    `${config.apiBaseUrl}/open-api/v1/calldata/place-orders`,
+  // Open position (LONG) — `FILL_OR_KILL` with `rate` omitted asks the
+  // backend to match at the side's extreme tick (swallow at any rate).
+  // If neither `slippage` nor `desiredRate` is provided, the backend
+  // applies the default 5% slippage for FOK market orders.
+  const { data: openData } = await axios.post<PlaceOrderResponse>(
+    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/place-order`,
     {
-      orderRequests: [
-        {
-          singleOrder: {
-            marketAcc,
-            marketId: MARKET_ID,
-            side: Side.LONG,
-            size: FixedX18.fromNumber(SIZE).value.toString(),
-            // limitTick is the worst rate you're willing to accept, so
-            // for market long order, we use the max tick (accepts all rates)
-            limitTick: TICK_MAX_VALUE,
-            tif: TimeInForce.FILL_OR_KILL,
-            slippage: 0.05, // 5% absolute slippage in APR
-          },
-        },
-      ],
+      marketAcc,
+      marketId: MARKET_ID,
+      side: Side.LONG,
+      size: FixedX18.fromNumber(SIZE).value.toString(),
+      tif: TimeInForce.FILL_OR_KILL,
+      slippage: 0.05, // 5% absolute slippage in APR
     }
   );
   const openResult = await signAndSubmit(
     config.apiBaseUrl,
     agent,
     account.address,
-    openData.calldatas
+    openData.calls
   );
   console.log("Open:", openResult);
 
@@ -78,7 +72,7 @@ async function main() {
       results: [marketAccInfo],
     },
   } = await axios.post<{ results: MarketAccInfo[] }>(
-    `${config.apiBaseUrl}/open-api/v1/accounts/market-acc-infos`,
+    `${config.apiBaseUrl}/apis/v1/accounts/market-acc-infos`,
     { marketAccs: [marketAcc] }
   );
   const positionSize = marketAccInfo.positions.find(
@@ -95,29 +89,22 @@ async function main() {
   );
 
   // Close position (SHORT)
-  const { data: closeData } = await axios.post<{ calldatas: Hex[] }>(
-    `${config.apiBaseUrl}/open-api/v1/calldata/place-orders`,
+  const { data: closeData } = await axios.post<PlaceOrderResponse>(
+    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/place-order`,
     {
-      orderRequests: [
-        {
-          singleOrder: {
-            marketAcc,
-            marketId: MARKET_ID,
-            side: Side.SHORT,
-            size: positionSize,
-            limitTick: TICK_MIN_VALUE,
-            tif: TimeInForce.FILL_OR_KILL,
-            slippage: 0.05, // 5% absolute slippage in APR
-          },
-        },
-      ],
+      marketAcc,
+      marketId: MARKET_ID,
+      side: Side.SHORT,
+      size: positionSize,
+      tif: TimeInForce.FILL_OR_KILL,
+      slippage: 0.05,
     }
   );
   const closeResult = await signAndSubmit(
     config.apiBaseUrl,
     agent,
     account.address,
-    closeData.calldatas
+    closeData.calls
   );
   console.log("Close:", closeResult);
 }

@@ -3,6 +3,7 @@ import { loadConfig } from "../src/utils/config";
 import { run } from "../src/utils/setup";
 
 type Asset = {
+  id: string;
   address: string;
   tokenId: number;
   name: string;
@@ -26,12 +27,12 @@ type Asset = {
 async function main() {
   const config = loadConfig();
 
-  const { data } = await axios.get<{ assets: Asset[] }>(
-    `${config.apiBaseUrl}/open-api/v1/assets/all`
+  const { data } = await axios.get<{ results: Asset[] }>(
+    `${config.apiBaseUrl}/apis/v1/assets`
   );
 
   console.table(
-    data.assets.map((a) => ({
+    data.results.map((a) => ({
       tokenId: a.tokenId,
       address: a.address,
       symbol: a.symbol,
