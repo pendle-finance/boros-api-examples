@@ -1,4 +1,4 @@
-import { FixedX18, estimateTickForRate } from "@pendle/boros-offchain-math";
+import { FixedX18 } from "@pendle/boros-offchain-math";
 import {
   CROSS_MARKET_ID,
   MarketAccLib,
@@ -11,7 +11,6 @@ import { AgentCall, run, setup, signAndSubmit } from "../src/utils/setup";
 
 // Run `yarn example:markets` to see available markets
 const MARKET_ID = 135; // BTCUSDC (2026-06-26)
-const TICK_STEP = 2n; // from market.imData.tickStep
 
 type PlaceOrderResponse = {
   calls: (AgentCall & {
@@ -46,23 +45,16 @@ async function mainDirect() {
 }
 
 // === Version 2: using @pendle/boros-sdk-public ===
-//
-// `exchange.placeOrder` takes an integer `limitTick`, so we convert from
-// APR using `estimateTickForRate` (from `@pendle/boros-offchain-math`).
 async function _mainSdk() {
   const { exchange, account } = setup();
   const marketAcc = MarketAccLib.pack(account.address, 0, 3, CROSS_MARKET_ID);
-
-  const limitTick = Number(
-    estimateTickForRate(FixedX18.fromNumber(0.02), TICK_STEP, true)
-  );
 
   const result = await exchange.placeOrder({
     marketAcc,
     marketId: MARKET_ID,
     side: Side.LONG,
     size: FixedX18.fromNumber(11).value,
-    limitTick,
+    rate: 0.02, // 2% APR
     tif: TimeInForce.GOOD_TIL_CANCELLED,
   });
   console.log("Order result:", result);
