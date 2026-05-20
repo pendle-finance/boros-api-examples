@@ -1,7 +1,8 @@
 import { FixedX18 } from "@pendle/boros-offchain-math";
-import { CROSS_MARKET_ID, MarketAccLib } from "@pendle/sdk-boros";
+import { CROSS_MARKET_ID, MarketAccLib } from "@pendle/boros-sdk-public";
 import axios from "axios";
 import { parseUnits } from "viem";
+import { API_BASE_URL } from "../src/utils/api";
 import { AgentCall, run, setup, signAndSubmit } from "../src/utils/setup";
 
 // see 02-assets.ts
@@ -32,8 +33,13 @@ type GasBalanceResponse = {
  * `amount` is a bigint string in the paying token's **native decimals**
  * (USDT0 has 6 decimals). The endpoint does not do USD conversion.
  */
-async function main() {
-  const { config, account, agent } = setup();
+
+const formatBalance = (v: string) =>
+  FixedX18.fromBigIntString(v).toNumber().toFixed(2);
+
+// === Version 1 (default): direct API calls ===
+async function mainDirect() {
+  const { account, agent } = setup();
 
   // Step 1: Check current portfolio balance
   console.log("=== Current Portfolio Balance ===");
@@ -45,26 +51,19 @@ async function main() {
   );
 
   const { data: balanceData } = await axios.post<{ results: MarketAccInfo[] }>(
-    `${config.apiBaseUrl}/apis/v1/accounts/market-acc-infos`,
+    `${API_BASE_URL}/v1/accounts/market-acc-infos`,
     { marketAccs: [marketAcc] }
   );
 
   const portfolioInfo = balanceData.results[0];
-  const formatBalance = (v: string) =>
-    FixedX18.fromBigIntString(v).toNumber().toFixed(2);
 
   console.log("Total cash:", formatBalance(portfolioInfo.totalCash));
-  console.log(
-    "Available IM:",
-    formatBalance(portfolioInfo.availableInitialMargin)
-  );
+  console.log("Available IM:", formatBalance(portfolioInfo.availableInitialMargin));
 
   // Step 2: Check current gas balance
   const { data: gasBalanceBefore } = await axios.get<GasBalanceResponse>(
-    `${config.apiBaseUrl}/apis/v1/accounts/gas-balance`,
-    {
-      params: { root: account.address },
-    }
+    `${API_BASE_URL}/v1/accounts/gas-balance`,
+    { params: { root: account.address } }
   );
 
   console.log("\n=== Current Gas Balance ===");
@@ -76,7 +75,7 @@ async function main() {
   const amount = parseUnits("1", USDT0_DECIMALS);
 
   const { data } = await axios.post<AgentCalldataResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/pay-treasury`,
+    `${API_BASE_URL}/v1/calldata-builder/agent/pay-treasury`,
     {
       accountId: 0,
       isCross: true, // true = pay from the cross-margin account
@@ -85,21 +84,13 @@ async function main() {
     }
   );
 
-  const payTreasuryResult = await signAndSubmit(
-    config.apiBaseUrl,
-    agent,
-    account.address,
-    data.calls
-  );
-
+  const payTreasuryResult = await signAndSubmit(agent, account.address, data.calls);
   console.log("Pay treasury result:", payTreasuryResult);
 
   // Step 4: Check gas balance after top-up
   const { data: gasBalanceAfter } = await axios.get<GasBalanceResponse>(
-    `${config.apiBaseUrl}/apis/v1/accounts/gas-balance`,
-    {
-      params: { root: account.address },
-    }
+    `${API_BASE_URL}/v1/accounts/gas-balance`,
+    { params: { root: account.address } }
   );
 
   console.log("\n=== Gas Balance After Top-Up ===");
@@ -107,4 +98,25 @@ async function main() {
   console.log(`\nSuccessfully topped up gas account with 1 USDT0`);
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+//
+// `exchange.payTreasury` takes the amount as a bigint and signs + executes
+// in one call. `exchange.getGasBalance()` is the gas-balance lookup helper.
+async function _mainSdk() {
+  const { exchange } = setup();
+
+  const gasBefore = await exchange.getGasBalance();
+  console.log("Gas balance (USD) before:", gasBefore);
+
+  const result = await exchange.payTreasury({
+    isCross: true,
+    marketId: USDT0_COLLATERAL_MARKET_ID,
+    usdAmount: Number(parseUnits("1", USDT0_DECIMALS)),
+  });
+  console.log("Pay treasury result:", result);
+
+  const gasAfter = await exchange.getGasBalance();
+  console.log("Gas balance (USD) after:", gasAfter);
+}
+
+run(mainDirect);

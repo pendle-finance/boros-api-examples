@@ -1,6 +1,6 @@
 import axios from "axios";
-import { loadConfig } from "../src/utils/config";
-import { run } from "../src/utils/setup";
+import { API_BASE_URL } from "../src/utils/api";
+import { run, setup } from "../src/utils/setup";
 
 type Asset = {
   id: string;
@@ -24,11 +24,11 @@ type Asset = {
  * - Query balance: Returns parseUnits('1', 18) equivalent
  * - Place order for 1 USDT0: parseUnits('1', 18)
  */
-async function main() {
-  const config = loadConfig();
 
+// === Version 1 (default): direct API calls ===
+async function mainDirect() {
   const { data } = await axios.get<{ results: Asset[] }>(
-    `${config.apiBaseUrl}/apis/v1/assets`
+    `${API_BASE_URL}/v1/assets`
   );
 
   console.table(
@@ -43,4 +43,21 @@ async function main() {
   );
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+async function _mainSdk() {
+  const { exchange } = setup();
+  const { results } = await exchange.getAssets();
+
+  console.table(
+    results.map((a) => ({
+      tokenId: a.tokenId,
+      address: a.address,
+      symbol: a.symbol,
+      name: a.name,
+      decimals: a.decimals,
+      isCollateral: a.isCollateral,
+    }))
+  );
+}
+
+run(mainDirect);

@@ -3,8 +3,8 @@
 Minimal TypeScript examples for integrating with BOROS trading APIs.
 
 These examples target the v1 Boros Open API set served under `/apis/v1/...`
-on `staging-api.boros.finance` / `api.boros.finance`. The interactive docs
-(OpenAPI spec) are at https://staging-api.boros.finance/apis/docs.
+on `api-boros.pendle.finance`. The interactive docs (OpenAPI spec) are at
+https://api-boros.pendle.finance/apis/docs.
 
 ## Quick Start
 

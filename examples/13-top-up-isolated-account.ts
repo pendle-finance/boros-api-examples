@@ -2,19 +2,12 @@ import { FixedX18 } from "@pendle/boros-offchain-math";
 import {
   CROSS_MARKET_ID,
   MarketAccLib,
+  getRouterAddress,
   waitForTransaction,
-} from "@pendle/sdk-boros";
+} from "@pendle/boros-sdk-public";
 import axios from "axios";
-import {
-  createPublicClient,
-  createWalletClient,
-  erc20Abi,
-  Hex,
-  http,
-  parseUnits,
-} from "viem";
-import { arbitrum } from "viem/chains";
-import { getAddresses } from "../src/utils/addresses";
+import { Hex, erc20Abi, parseUnits } from "viem";
+import { API_BASE_URL } from "../src/utils/api";
 import { AgentCall, run, setup, signAndSubmit } from "../src/utils/setup";
 
 // see 02-assets.ts
@@ -52,23 +45,15 @@ type MarketAccInfo = {
  * This is necessary because deposits always go to the cross account first,
  * and then you need to transfer into the isolated account.
  */
-async function main() {
-  const { config, account, agent } = setup();
+
+const formatBalance = (v: string) =>
+  FixedX18.fromBigIntString(v).toNumber().toFixed(2);
+
+// === Version 1 (default): direct API calls ===
+async function mainDirect() {
+  const { account, agent, walletClient, publicClient } = setup();
   const depositAmount = parseUnits("11", 6); // 11 USDT0 (native decimals)
   const transferAmount = FixedX18.fromNumber(10); // 10 USDT0 → isolated (1e18-scaled)
-
-  const client = createWalletClient({
-    account,
-    chain: arbitrum,
-    transport: http(config.rpcUrl),
-  });
-  const publicClient = createPublicClient({
-    chain: arbitrum,
-    transport: http(config.rpcUrl),
-  });
-
-  const formatBalance = (v: string) =>
-    FixedX18.fromBigIntString(v).toNumber().toFixed(2);
 
   const crossMarketAcc = MarketAccLib.pack(
     account.address,
@@ -85,13 +70,10 @@ async function main() {
 
   async function getBalances() {
     const { data } = await axios.post<{ results: MarketAccInfo[] }>(
-      `${config.apiBaseUrl}/apis/v1/accounts/market-acc-infos`,
+      `${API_BASE_URL}/v1/accounts/market-acc-infos`,
       { marketAccs: [crossMarketAcc, isolatedMarketAcc] }
     );
-    return {
-      cross: data.results[0],
-      isolated: data.results[1],
-    };
+    return { cross: data.results[0], isolated: data.results[1] };
   }
 
   // Step 1: Check balances before
@@ -100,52 +82,40 @@ async function main() {
 
   console.log("Cross account:");
   console.log("  Total cash:", formatBalance(balancesBefore.cross.totalCash));
-  console.log(
-    "  Available IM:",
-    formatBalance(balancesBefore.cross.availableInitialMargin)
-  );
+  console.log("  Available IM:", formatBalance(balancesBefore.cross.availableInitialMargin));
 
   console.log(`\nIsolated account (Market ${ISOLATED_MARKET_ID}):`);
-  console.log(
-    "  Total cash:",
-    formatBalance(balancesBefore.isolated.totalCash)
-  );
-  console.log(
-    "  Available IM:",
-    formatBalance(balancesBefore.isolated.availableInitialMargin)
-  );
+  console.log("  Total cash:", formatBalance(balancesBefore.isolated.totalCash));
+  console.log("  Available IM:", formatBalance(balancesBefore.isolated.availableInitialMargin));
 
   // Step 2: Deposit to cross account (on-chain)
   console.log("\n=== Depositing to Cross Account ===");
 
   const { data: depositData } = await axios.post<UserCalldataResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/user/deposit`,
-    {
-      marketAcc: crossMarketAcc,
-      amount: depositAmount.toString(),
-    }
+    `${API_BASE_URL}/v1/calldata-builder/user/deposit`,
+    { marketAcc: crossMarketAcc, amount: depositAmount.toString() }
   );
 
   const allowance = await publicClient.readContract({
     address: USDT0,
     abi: erc20Abi,
     functionName: "allowance",
-    args: [account.address, getAddresses().router],
+    args: [account.address, getRouterAddress()],
   });
 
   if (allowance < depositAmount) {
     console.log("Approving USDT0...");
-    const approveTxHash = await client.writeContract({
+    const approveTxHash = await walletClient.writeContract({
       address: USDT0,
       abi: erc20Abi,
       functionName: "approve",
-      args: [getAddresses().router, depositAmount],
+      args: [getRouterAddress(), depositAmount],
     });
     await waitForTransaction(publicClient, approveTxHash);
     console.log("Approve txHash:", approveTxHash);
   }
 
-  const depositTxHash = await client.sendTransaction({
+  const depositTxHash = await walletClient.sendTransaction({
     to: depositData.to,
     data: depositData.calldata,
   });
@@ -156,7 +126,7 @@ async function main() {
   console.log("\n=== Cash Transfer: Cross -> Isolated ===");
 
   const { data: transferData } = await axios.post<AgentCalldataResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/cash-transfer`,
+    `${API_BASE_URL}/v1/calldata-builder/agent/cash-transfer`,
     {
       accountId: 0,
       marketId: ISOLATED_MARKET_ID,
@@ -166,12 +136,10 @@ async function main() {
   );
 
   const transferResult = await signAndSubmit(
-    config.apiBaseUrl,
     agent,
     account.address,
     transferData.calls
   );
-
   console.log("Cash transfer result:", transferResult);
 
   // Step 4: Check balances after
@@ -180,17 +148,11 @@ async function main() {
 
   console.log("Cross account:");
   console.log("  Total cash:", formatBalance(balancesAfter.cross.totalCash));
-  console.log(
-    "  Available IM:",
-    formatBalance(balancesAfter.cross.availableInitialMargin)
-  );
+  console.log("  Available IM:", formatBalance(balancesAfter.cross.availableInitialMargin));
 
   console.log(`\nIsolated account (Market ${ISOLATED_MARKET_ID}):`);
   console.log("  Total cash:", formatBalance(balancesAfter.isolated.totalCash));
-  console.log(
-    "  Available IM:",
-    formatBalance(balancesAfter.isolated.availableInitialMargin)
-  );
+  console.log("  Available IM:", formatBalance(balancesAfter.isolated.availableInitialMargin));
 
   // Summary
   console.log("\n=== Summary ===");
@@ -201,12 +163,32 @@ async function main() {
     FixedX18.fromBigIntString(balancesAfter.isolated.totalCash).toNumber() -
     FixedX18.fromBigIntString(balancesBefore.isolated.totalCash).toNumber();
 
-  console.log(
-    `Cross account change: ${crossDiff >= 0 ? "+" : ""}${crossDiff.toFixed(2)} USDT0`
-  );
-  console.log(
-    `Isolated account change: ${isolatedDiff >= 0 ? "+" : ""}${isolatedDiff.toFixed(2)} USDT0`
-  );
+  console.log(`Cross account change: ${crossDiff >= 0 ? "+" : ""}${crossDiff.toFixed(2)} USDT0`);
+  console.log(`Isolated account change: ${isolatedDiff >= 0 ? "+" : ""}${isolatedDiff.toFixed(2)} USDT0`);
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+//
+// `exchange.deposit` + `exchange.cashTransfer` collapse the deposit and
+// transfer flows into two calls.
+async function _mainSdk() {
+  const { exchange, account } = setup();
+
+  const depositReceipt = await exchange.deposit({
+    userAddress: account.address,
+    tokenId: USDT0_TOKEN_ID,
+    amount: parseUnits("11", 6),
+    accountId: 0,
+    marketId: CROSS_MARKET_ID,
+  });
+  console.log("Deposit txHash:", depositReceipt.transactionHash);
+
+  const transferResult = await exchange.cashTransfer({
+    marketId: ISOLATED_MARKET_ID,
+    isDeposit: true, // CROSS_TO_ISOLATED
+    amount: FixedX18.fromNumber(10).value,
+  });
+  console.log("Cash transfer result:", transferResult);
+}
+
+run(mainDirect);

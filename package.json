@@ -1,7 +1,6 @@
 {
   "name": "boros-api-examples",
   "scripts": {
-    "postinstall": "ts-node scripts/gen-abi.ts",
     "example:agent": "ts-node examples/01-agent.ts",
     "example:assets": "ts-node examples/02-assets.ts",
     "example:markets": "ts-node examples/03-markets.ts",
@@ -18,13 +17,12 @@
   },
   "dependencies": {
     "@pendle/boros-offchain-math": "^1.0.6",
-    "@pendle/sdk-boros": "^1.1.14",
+    "@pendle/boros-sdk-public": "0.1.2",
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",
-    "viem": "^2.39.2"
+    "viem": "2.44.4"
   },
   "devDependencies": {
-    "@pendle/boros-core": "^1.0.3",
     "@types/dotenv": "^8.2.3",
     "@types/node": "^24.10.1",
     "ts-node": "^10.9.2",

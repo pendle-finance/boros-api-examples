@@ -1,6 +1,7 @@
 import { FixedX18 } from "@pendle/boros-offchain-math";
-import { Side } from "@pendle/sdk-boros";
+import { Side } from "@pendle/boros-sdk-public";
 import axios from "axios";
+import { API_BASE_URL } from "../src/utils/api";
 import { AgentCall, run, setup, signAndSubmit } from "../src/utils/setup";
 import { sleep_s } from "../src/utils/time";
 
@@ -41,15 +42,24 @@ type CancelOrdersResponse = {
   calls: AgentCall[];
 };
 
-async function main() {
-  const { config, account, agent } = setup();
+const formatOrder = (o: Order) => ({
+  orderId: o.orderId,
+  marketId: o.marketId,
+  side: o.side === Side.LONG ? "LONG" : "SHORT",
+  size: FixedX18.fromBigIntString(o.placedSize).toNumber().toFixed(2),
+  status: OrderStatusV2[o.status] ?? o.status,
+});
+
+// === Version 1 (default): direct API calls ===
+async function mainDirect() {
+  const { account, agent } = setup();
 
   // Query active orders (cursor-based pagination, sorted by last-updated).
   // `orderType` accepts a single value or a CSV list.
   const { data: activeOrders } = await axios.get<{
     results: Order[];
     resumeToken?: string;
-  }>(`${config.apiBaseUrl}/apis/v1/accounts/orders`, {
+  }>(`${API_BASE_URL}/v1/accounts/orders`, {
     params: {
       root: account.address,
       accountId: 0,
@@ -64,14 +74,6 @@ async function main() {
     return;
   }
 
-  const formatOrder = (o: Order) => ({
-    orderId: o.orderId,
-    marketId: o.marketId,
-    side: o.side === Side.LONG ? "LONG" : "SHORT",
-    size: FixedX18.fromBigIntString(o.placedSize).toNumber().toFixed(2),
-    status: OrderStatusV2[o.status] ?? o.status,
-  });
-
   console.log(`Found ${activeOrders.results.length} active orders:`);
   console.table(activeOrders.results.map(formatOrder));
 
@@ -81,7 +83,7 @@ async function main() {
   // Cancel-orders is multi-market; one on-chain `bulkCancels` call per
   // `markets[]` entry. The response has N `calls` for N markets.
   const { data } = await axios.post<CancelOrdersResponse>(
-    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/cancel-orders`,
+    `${API_BASE_URL}/v1/calldata-builder/agent/cancel-orders`,
     {
       markets: [
         {
@@ -94,12 +96,7 @@ async function main() {
     }
   );
 
-  const result = await signAndSubmit(
-    config.apiBaseUrl,
-    agent,
-    account.address,
-    data.calls
-  );
+  const result = await signAndSubmit(agent, account.address, data.calls);
   console.log("Cancel result:", result);
 
   // Wait for indexer to update
@@ -109,7 +106,7 @@ async function main() {
   const { data: history } = await axios.get<{
     results: Order[];
     resumeToken?: string;
-  }>(`${config.apiBaseUrl}/apis/v1/accounts/orders`, {
+  }>(`${API_BASE_URL}/v1/accounts/orders`, {
     params: {
       root: account.address,
       accountId: 0,
@@ -122,4 +119,43 @@ async function main() {
   console.table(history.results.map(formatOrder));
 }
 
-run(main);
+// === Version 2: using @pendle/boros-sdk-public ===
+async function _mainSdk() {
+  const { exchange } = setup();
+
+  const activeOrders = await exchange.getOrdersPage({
+    isActive: true,
+    orderType: [OrderType.LIMIT],
+    limit: 10,
+  });
+
+  if (activeOrders.results.length === 0) {
+    console.log("No active orders to cancel");
+    return;
+  }
+
+  console.log(`Found ${activeOrders.results.length} active orders:`);
+  console.table(activeOrders.results.map(formatOrder as any));
+
+  const orderToCancel = activeOrders.results[0];
+  console.log(`Cancelling order ${orderToCancel.orderId}...`);
+
+  const result = await exchange.cancelOrders({
+    marketAcc: orderToCancel.marketAcc as `0x${string}`,
+    marketId: orderToCancel.marketId,
+    cancelAll: false,
+    orderIds: [orderToCancel.orderId],
+  });
+  console.log("Cancel result:", result);
+
+  await sleep_s(2);
+
+  const history = await exchange.getOrdersPage({
+    isActive: false,
+    limit: 5,
+  });
+  console.log(`Order history (${history.results.length} shown):`);
+  console.table(history.results.map(formatOrder as any));
+}
+
+run(mainDirect);
