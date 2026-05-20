@@ -12,14 +12,16 @@ import { arbitrum } from "viem/chains";
 import { loadConfig } from "../src/utils/config";
 import { run } from "../src/utils/setup";
 
-type WithdrawCalldata = {
-  data: Hex;
+type UserCalldataResponse = {
+  calldata: Hex;
   from: Address;
   to: Address;
-  gas: string;
+  gas?: string;
 };
 
-// After submitting a withdraw request, wait 10 minutes for assets to be transferred to your wallet
+// After submitting a withdraw request, wait 10 minutes for assets to be
+// transferred to your wallet — a backend bot calls the finalize step on a
+// timer once the cooldown elapses.
 async function main() {
   const config = loadConfig();
 
@@ -33,20 +35,21 @@ async function main() {
     chain: arbitrum,
     transport: http(config.rpcUrl),
   });
-  const { data } = await axios.get<WithdrawCalldata>(
-    `${config.apiBaseUrl}/open-api/v1/calldata/withdraw-request`,
+
+  const { data } = await axios.post<UserCalldataResponse>(
+    `${config.apiBaseUrl}/apis/v1/calldata-builder/user/request-withdrawal`,
     {
-      params: {
-        userAddress: walletAccount.address,
-        tokenId: 3,
-        amount: parseUnits("1", 6).toString(),
-      },
+      root: walletAccount.address,
+      tokenId: 3, // USDT0 (see 02-assets.ts)
+      // `amount` is the bigint string in the token's native decimals
+      // (USDT0 has 6 decimals).
+      amount: parseUnits("1", 6).toString(),
     }
   );
 
   const txHash = await walletClient.sendTransaction({
     to: data.to,
-    data: data.data,
+    data: data.calldata,
   });
 
   await waitForTransaction(publicClient, txHash);

@@ -1,14 +1,19 @@
 import { FixedX18 } from "@pendle/boros-offchain-math";
 import { Side } from "@pendle/sdk-boros";
 import axios from "axios";
-import { Hex } from "viem";
-import { run, setup, signAndSubmit } from "../src/utils/setup";
+import { AgentCall, run, setup, signAndSubmit } from "../src/utils/setup";
 import { sleep_s } from "../src/utils/time";
 
-enum OrderStatus {
-  ACTIVE = 0,
-  CANCELED = 1,
-  FILLED = 2,
+enum OrderStatusV2 {
+  Filling = 0,
+  Cancelled = 1,
+  FullyFilled = 2,
+  Expired = 3,
+  Purged = 4,
+  Pending = 5,
+  Executing = 6,
+  Retrying = 7,
+  Failed = 8,
 }
 
 enum OrderType {
@@ -18,7 +23,7 @@ enum OrderType {
   STOP_LOSS_MARKET = 3,
 }
 
-type LimitOrder = {
+type Order = {
   orderId: string;
   marketId: number;
   accountId: number;
@@ -27,21 +32,26 @@ type LimitOrder = {
   unfilledSize: string;
   impliedApr: number;
   tick: number;
-  status: OrderStatus;
-  orderType: OrderType;
+  status: number;
+  orderType: number;
   marketAcc: string;
+};
+
+type CancelOrdersResponse = {
+  calls: AgentCall[];
 };
 
 async function main() {
   const { config, account, agent } = setup();
 
-  // Query active orders
+  // Query active orders (cursor-based pagination, sorted by last-updated).
+  // `orderType` accepts a single value or a CSV list.
   const { data: activeOrders } = await axios.get<{
-    results: LimitOrder[];
-    total: number;
-  }>(`${config.apiBaseUrl}/open-api/v1/accounts/limit-orders`, {
+    results: Order[];
+    resumeToken?: string;
+  }>(`${config.apiBaseUrl}/apis/v1/accounts/orders`, {
     params: {
-      userAddress: account.address,
+      root: account.address,
       accountId: 0,
       isActive: true,
       orderType: OrderType.LIMIT,
@@ -54,30 +64,33 @@ async function main() {
     return;
   }
 
-  const formatOrder = (o: LimitOrder) => ({
+  const formatOrder = (o: Order) => ({
     orderId: o.orderId,
     marketId: o.marketId,
     side: o.side === Side.LONG ? "LONG" : "SHORT",
     size: FixedX18.fromBigIntString(o.placedSize).toNumber().toFixed(2),
-    status: OrderStatus[o.status],
+    status: OrderStatusV2[o.status] ?? o.status,
   });
 
-  console.log(`Found ${activeOrders.total} active orders:`);
+  console.log(`Found ${activeOrders.results.length} active orders:`);
   console.table(activeOrders.results.map(formatOrder));
 
   const orderToCancel = activeOrders.results[0];
   console.log(`Cancelling order ${orderToCancel.orderId}...`);
 
-  // Get cancel calldata
-  const { data } = await axios.get<{ calldatas: Hex[] }>(
-    `${config.apiBaseUrl}/open-api/v1/calldata/cancel-order`,
+  // Cancel-orders is multi-market; one on-chain `bulkCancels` call per
+  // `markets[]` entry. The response has N `calls` for N markets.
+  const { data } = await axios.post<CancelOrdersResponse>(
+    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/cancel-orders`,
     {
-      params: {
-        marketAcc: orderToCancel.marketAcc,
-        marketId: orderToCancel.marketId,
-        cancelAll: false,
-        orderIds: orderToCancel.orderId,
-      },
+      markets: [
+        {
+          marketAcc: orderToCancel.marketAcc,
+          marketId: orderToCancel.marketId,
+          cancelAll: false,
+          orderIds: [orderToCancel.orderId],
+        },
+      ],
     }
   );
 
@@ -85,7 +98,7 @@ async function main() {
     config.apiBaseUrl,
     agent,
     account.address,
-    data.calldatas
+    data.calls
   );
   console.log("Cancel result:", result);
 
@@ -94,18 +107,18 @@ async function main() {
 
   // Query order history to verify cancellation
   const { data: history } = await axios.get<{
-    results: LimitOrder[];
-    total: number;
-  }>(`${config.apiBaseUrl}/open-api/v1/accounts/limit-orders`, {
+    results: Order[];
+    resumeToken?: string;
+  }>(`${config.apiBaseUrl}/apis/v1/accounts/orders`, {
     params: {
-      userAddress: account.address,
+      root: account.address,
       accountId: 0,
       isActive: false,
       limit: 5,
     },
   });
 
-  console.log(`Order history (${history.total} total):`);
+  console.log(`Order history (${history.results.length} shown):`);
   console.table(history.results.map(formatOrder));
 }
 

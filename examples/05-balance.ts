@@ -6,7 +6,11 @@ import { loadConfig } from "../src/utils/config";
 import { run } from "../src/utils/setup";
 
 type MarketAccInfo = {
+  marketAcc: string;
   totalCash: string;
+  netBalance: string;
+  initialMargin: string;
+  initialMarginWithLeverage: string;
   availableInitialMargin: string;
   availableMaintMargin: string;
   positions: {
@@ -24,7 +28,7 @@ async function main() {
   const marketAcc = MarketAccLib.pack(account.address, 0, 3, CROSS_MARKET_ID);
 
   const { data } = await axios.post<{ results: MarketAccInfo[] }>(
-    `${config.apiBaseUrl}/open-api/v1/accounts/market-acc-infos`,
+    `${config.apiBaseUrl}/apis/v1/accounts/market-acc-infos`,
     { marketAccs: [marketAcc] }
   );
 
@@ -34,6 +38,7 @@ async function main() {
 
   console.log("Cross-margin account:");
   console.log("  Total cash:", format(info.totalCash));
+  console.log("  Net balance:", format(info.netBalance));
   console.log("  Available IM:", format(info.availableInitialMargin));
   console.log("  Available MM:", format(info.availableMaintMargin));
 

@@ -1,17 +1,21 @@
 import { FixedX18 } from "@pendle/boros-offchain-math";
 import {
   CROSS_MARKET_ID,
-  estimateTickForRate,
   MarketAccLib,
   Side,
   TimeInForce,
 } from "@pendle/sdk-boros";
 import axios from "axios";
-import { Hex } from "viem";
-import { run, setup, signAndSubmit } from "../src/utils/setup";
+import { AgentCall, run, setup, signAndSubmit } from "../src/utils/setup";
 
 // Run `yarn example:markets` to see available markets
-const MARKET_ID = 21; // BTC-USD (2025-12-26)
+const MARKET_ID = 135; // BTCUSDC (2026-06-26)
+
+type PlaceOrderResponse = {
+  calls: (AgentCall & {
+    resolved?: { limitTick: string; actualRate?: number };
+  })[];
+};
 
 async function main() {
   const { config, account, agent } = setup();
@@ -21,30 +25,18 @@ async function main() {
   // - marketId: CROSS_MARKET_ID for cross-margin, or specific marketId for isolated
   const marketAcc = MarketAccLib.pack(account.address, 0, 3, CROSS_MARKET_ID);
 
-  // Convert APR to tick (rate = 1.00005^(tick * tickStep) - 1)
-  // tickStep: from market.imData.tickStep (run `yarn example:markets`)
-  const TICK_STEP = 2n;
-  const limitTick = estimateTickForRate(
-    FixedX18.fromNumber(0.05), // 5% APR
-    TICK_STEP,
-    false // round down
-  );
-
-  const { data } = await axios.post<{ calldatas: Hex[] }>(
-    `${config.apiBaseUrl}/open-api/v1/calldata/place-orders`,
+  // Use the simple, UI-style `/place-order` endpoint: pass `rate` (APR as a
+  // float) and the backend handles the tick conversion. For a resting limit
+  // order, GOOD_TIL_CANCELLED with no `slippage` rests at exactly `rate`.
+  const { data } = await axios.post<PlaceOrderResponse>(
+    `${config.apiBaseUrl}/apis/v1/calldata-builder/agent/place-order`,
     {
-      orderRequests: [
-        {
-          singleOrder: {
-            marketAcc,
-            marketId: MARKET_ID,
-            side: Side.LONG,
-            size: FixedX18.fromNumber(1).value.toString(),
-            limitTick: limitTick.toString(),
-            tif: TimeInForce.GOOD_TIL_CANCELLED,
-          },
-        },
-      ],
+      marketAcc,
+      marketId: MARKET_ID,
+      side: Side.LONG,
+      size: FixedX18.fromNumber(11).value.toString(),
+      tif: TimeInForce.GOOD_TIL_CANCELLED,
+      rate: 0.02, // 2% APR
     }
   );
 
@@ -52,7 +44,7 @@ async function main() {
     config.apiBaseUrl,
     agent,
     account.address,
-    data.calldatas
+    data.calls
   );
   console.log("Order result:", result);
 }

@@ -1,4 +1,4 @@
-import { CROSS_MARKET_ID, waitForTransaction } from "@pendle/sdk-boros";
+import { CROSS_MARKET_ID, MarketAccLib, waitForTransaction } from "@pendle/sdk-boros";
 import axios from "axios";
 import {
   createPublicClient,
@@ -18,7 +18,12 @@ import { run } from "../src/utils/setup";
 const USDT0 = "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9";
 const USDT0_TOKEN_ID = 3;
 
-type DepositCalldata = { data: Hex; from: Address; to: Address; gas: string };
+type UserCalldataResponse = {
+  calldata: Hex;
+  from: Address;
+  to: Address;
+  gas?: string;
+};
 
 async function main() {
   const config = loadConfig();
@@ -35,16 +40,22 @@ async function main() {
     transport: http(config.rpcUrl),
   });
 
-  const { data } = await axios.get<DepositCalldata>(
-    `${config.apiBaseUrl}/open-api/v1/calldata/deposit`,
+  // `marketAcc` packs (root, accountId, tokenId, marketId). For cross margin
+  // deposits, the marketId segment is CROSS_MARKET_ID (0xFFFFFF).
+  const marketAcc = MarketAccLib.pack(
+    account.address,
+    0,
+    USDT0_TOKEN_ID,
+    CROSS_MARKET_ID
+  );
+
+  const { data } = await axios.post<UserCalldataResponse>(
+    `${config.apiBaseUrl}/apis/v1/calldata-builder/user/deposit`,
     {
-      params: {
-        userAddress: account.address,
-        tokenId: USDT0_TOKEN_ID,
-        amount: amount.toString(),
-        accountId: 0,
-        marketId: CROSS_MARKET_ID,
-      },
+      marketAcc,
+      // `amount` is the bigint string in the token's native decimals
+      // (USDT0 has 6 decimals).
+      amount: amount.toString(),
     }
   );
 
@@ -68,7 +79,7 @@ async function main() {
 
   const depositTxHash = await client.sendTransaction({
     to: data.to,
-    data: data.data,
+    data: data.calldata,
   });
   await waitForTransaction(publicClient, depositTxHash);
   console.log("Deposit txHash:", depositTxHash);
