@@ -40,6 +40,20 @@ https://api-boros.pendle.finance/apis/docs.
 A separate key that can only trade (not withdraw). Generate any random wallet,
 add to `.env`, then run `01-agent.ts` to approve it.
 
+### API Signing Key
+
+Only the stop-order endpoints need this. It is an **Ed25519** keypair, separate
+from both your wallet and your agent: every request carries a short-lived
+self-signed JWT in `x-pendle-auth`, so there is no static token on the wire.
+
+Mint one at https://api-boros.pendle.finance/dashboard, or from a script —
+`POST /v1/api-keys` is authenticated by an EIP-712 signature from your root
+wallet, so no browser is required. The PKCS#8 PEM is returned **once**. Put the
+id and the PEM in `.env` as `BOROS_API_KEY_ID` / `BOROS_API_KEY_PEM`.
+
+The key proves *which root you are*, nothing more — placing and cancelling still
+need the agent signature, so a leaked key cannot move your position.
+
 ### Account ID (Sub-accounts)
 
 You can have up to 256 sub-accounts (0-255). Default is 0. Each sub-account
@@ -86,4 +100,5 @@ Conversion between rate and tick using SDK helpers:
 | 11  | bulk-place-orders  | Yes            | Place many resting orders + atomic cancel    |
 | 12  | top-up-gas-account | Yes            | Top up off-chain gas balance from collateral |
 | 13  | top-up-isolated-account | Yes        | Fund an isolated-only market account         |
+| 14  | stop-order         | Yes + API key  | Place / list / cancel take-profit & stop-loss |
 

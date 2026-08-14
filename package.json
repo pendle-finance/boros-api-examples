@@ -13,14 +13,15 @@
     "example:cancel-order": "ts-node examples/10-cancel-order.ts",
     "example:bulk-place-orders": "ts-node examples/11-bulk-place-orders.ts",
     "example:top-up-gas-account": "ts-node examples/12-top-up-gas-account.ts",
-    "example:top-up-isolated-account": "ts-node examples/13-top-up-isolated-account.ts"
+    "example:top-up-isolated-account": "ts-node examples/13-top-up-isolated-account.ts",
+    "example:stop-order": "ts-node examples/14-stop-order.ts"
   },
   "dependencies": {
     "@pendle/boros-offchain-math": "^1.0.6",
-    "@pendle/boros-sdk-public": "0.1.4",
-    "axios": "^1.13.2",
+    "@pendle/boros-sdk-public": "0.2.0",
+    "axios": "^1.18.1",
     "dotenv": "^17.2.3",
-    "viem": "2.44.4"
+    "viem": "2.55.10"
   },
   "devDependencies": {
     "@types/dotenv": "^8.2.3",
