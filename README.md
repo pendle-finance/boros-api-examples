@@ -48,8 +48,12 @@ self-signed JWT in `x-pendle-auth`, so there is no static token on the wire.
 
 Mint one at https://api-boros.pendle.finance/dashboard, or from a script —
 `POST /v1/api-keys` is authenticated by an EIP-712 signature from your root
-wallet, so no browser is required. The PKCS#8 PEM is returned **once**. Put the
-id and the PEM in `.env` as `BOROS_API_KEY_ID` / `BOROS_API_KEY_PEM`.
+wallet **or from an agent approved on its sub-account 0**, so no browser is
+required (see `yarn example:api-keys`). An approved agent has full parity with
+the root over API keys — it can mint, list and revoke every key of that root —
+which keeps the withdraw-capable root key out of your bot's environment. The
+PKCS#8 PEM is returned **once**. Put the id and the PEM in `.env` as
+`BOROS_API_KEY_ID` / `BOROS_API_KEY_PEM`.
 
 The key proves *which root you are*, nothing more — placing and cancelling still
 need the agent signature, so a leaked key cannot move your position.
@@ -101,4 +105,5 @@ Conversion between rate and tick using SDK helpers:
 | 12  | top-up-gas-account | Yes            | Top up off-chain gas balance from collateral |
 | 13  | top-up-isolated-account | Yes        | Fund an isolated-only market account         |
 | 14  | stop-order         | Yes + API key  | Place / list / cancel take-profit & stop-loss |
+| 15  | api-keys           | Yes (or root)  | Mint / list / use / revoke an API signing key |
 
