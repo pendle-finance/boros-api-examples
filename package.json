@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@pendle/boros-offchain-math": "^1.0.6",
-    "@pendle/boros-sdk-public": "0.2.0",
+    "@pendle/boros-sdk-public": "0.3.1",
     "axios": "^1.18.1",
     "dotenv": "^17.2.3",
     "viem": "2.55.10"
