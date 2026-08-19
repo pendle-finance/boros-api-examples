@@ -558,9 +558,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@pendle/boros-sdk-public@npm:0.2.0":
-  version: 0.2.0
-  resolution: "@pendle/boros-sdk-public@npm:0.2.0"
+"@pendle/boros-sdk-public@npm:0.3.1":
+  version: 0.3.1
+  resolution: "@pendle/boros-sdk-public@npm:0.3.1"
   dependencies:
     "@pendle/boros-core": "npm:^1.0.4"
     "@pendle/boros-offchain-math": "npm:1.0.6"
@@ -568,7 +568,7 @@ __metadata:
     date-fns: "npm:^4.1.0"
     lru-cache: "npm:^11.2.2"
     viem: "npm:2.55.10"
-  checksum: 10c0/63ce0c134bdaa07c01992b192c518b45cd416c30a94887c37c0a31a59f92789e983606c5f942125311a9cb3aa1158743e3dfab291e83ae18681d43d520525852
+  checksum: 10c0/0913bf01189edff2359974c4480285efada4f60e5e236f28eb9d7c249277c4ec1c624c4b9086ccef16761d1f4c03aad1550a4fcc654bde71b9ba3494bd9a99de
   languageName: node
   linkType: hard
 
@@ -776,7 +776,7 @@ __metadata:
   resolution: "boros-api-examples@workspace:."
   dependencies:
     "@pendle/boros-offchain-math": "npm:^1.0.6"
-    "@pendle/boros-sdk-public": "npm:0.2.0"
+    "@pendle/boros-sdk-public": "npm:0.3.1"
     "@types/dotenv": "npm:^8.2.3"
     "@types/node": "npm:^24.10.1"
     axios: "npm:^1.18.1"

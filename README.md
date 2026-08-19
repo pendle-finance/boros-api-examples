@@ -46,14 +46,22 @@ Only the stop-order endpoints need this. It is an **Ed25519** keypair, separate
 from both your wallet and your agent: every request carries a short-lived
 self-signed JWT in `x-pendle-auth`, so there is no static token on the wire.
 
-Mint one at https://api-boros.pendle.finance/dashboard, or from a script —
-`POST /v1/api-keys` is authenticated by an EIP-712 signature from your root
-wallet **or from an agent approved on its sub-account 0**, so no browser is
-required (see `yarn example:api-keys`). An approved agent has full parity with
-the root over API keys — it can mint, list and revoke every key of that root —
-which keeps the withdraw-capable root key out of your bot's environment. The
-PKCS#8 PEM is returned **once**. Put the id and the PEM in `.env` as
-`BOROS_API_KEY_ID` / `BOROS_API_KEY_PEM`.
+Mint one at https://api-boros.pendle.finance/dashboard, or from a script with the
+SDK's `ApiKeys` — no browser required (see `yarn example:api-keys`):
+
+```ts
+const apiKeys = ApiKeys.asAgent(ROOT_ADDRESS, AGENT_PRIVATE_KEY); // or ApiKeys.asRoot(PRIVATE_KEY)
+const key = await apiKeys.create({ name: "prod-bot", expiresInDays: 90 });
+ApiKeys.activate(key); // installs it for every later open-api read
+```
+
+These routes take an EIP-712 signature from your root wallet **or from an agent
+approved on its sub-account 0**, and an approved agent has full parity with the
+root over API keys — it can mint, list and revoke every key of that root — which
+keeps the withdraw-capable root key out of your bot's environment. The PKCS#8 PEM
+is returned **once**. Put the id and the PEM in `.env` as `BOROS_API_KEY_ID` /
+`BOROS_API_KEY_PEM`; on restart `ApiKeys.activate({ keyId, privateKey })` takes
+them directly, with nothing to mint.
 
 The key proves *which root you are*, nothing more — placing and cancelling still
 need the agent signature, so a leaked key cannot move your position.
